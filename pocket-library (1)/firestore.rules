@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 3. Global Helpers
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // 2. Validation Blueprints
+    
+    function isValidUser(data) {
+      return (data.keys().hasAll(['userId']) ? (data.userId == request.auth.uid) : true)
+          && (data.keys().hasAll(['email']) ? (data.email is string && data.email.size() <= 256) : true)
+          && (data.keys().hasAll(['displayName']) ? (data.displayName == null || (data.displayName is string && data.displayName.size() <= 128)) : true)
+          && (data.keys().hasAll(['createdAt']) ? (data.createdAt == request.time) : true);
+    }
+
+    function isValidBook(data) {
+      return (data.keys().hasAll(['title']) ? (data.title is string && data.title.size() <= 256) : true)
+          && (data.keys().hasAll(['name']) ? (data.name is string && data.name.size() <= 256) : true)
+          && (data.keys().hasAll(['chapters']) ? (data.chapters is list && data.chapters.size() <= 2000) : true)
+          && (data.keys().hasAll(['currentCh']) ? (data.currentCh is int && data.currentCh >= 0) : true)
+          && (data.keys().hasAll(['ownerId']) ? (data.ownerId == request.auth.uid) : true)
+          && (data.keys().hasAll(['updatedAt']) ? (data.updatedAt == request.time) : true)
+          && (data.keys().hasAll(['zipB64']) ? (data.zipB64 == null || (data.zipB64 is string && data.zipB64.size() <= 1048576)) : true)
+          && (data.keys().hasAll(['pagesRead']) ? (data.pagesRead is int && data.pagesRead >= 0) : true)
+          && (data.keys().hasAll(['totalTime']) ? (data.totalTime is int && data.totalTime >= 0) : true)
+          && (data.keys().hasAll(['coverUrl']) ? (data.coverUrl is string && data.coverUrl.size() <= 1000000) : true);
+    }
+
+    function isValidSession(data) {
+      return (data.keys().hasAll(['date']) ? (data.date is timestamp) : true)
+          && (data.keys().hasAll(['duration']) ? (data.duration is int && data.duration >= 0) : true);
+    }
+
+    function isValidBookmark(data) {
+      return (data.keys().hasAll(['chapterIndex']) ? (data.chapterIndex is int && data.chapterIndex >= 0) : true)
+          && (data.keys().hasAll(['createdAt']) ? (data.createdAt is timestamp) : true);
+    }
+
+    function isValidAnnotation(data) {
+      return (data.keys().hasAll(['chapterIndex']) ? (data.chapterIndex is int && data.chapterIndex >= 0) : true)
+          && (data.keys().hasAll(['text']) ? (data.text is string && data.text.size() <= 10000) : true)
+          && (data.keys().hasAll(['date']) ? (data.date is timestamp) : true);
+    }
+
+    // 1. The Master Gate
+    
+    match /test/connection {
+      allow get: if isSignedIn();
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) 
+                    && request.resource.data.keys().hasAll(['userId', 'email', 'createdAt'])
+                    && request.resource.data.keys().size() >= 3
+                    && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) 
+                    && isValidUser(request.resource.data)
+                    && (!request.resource.data.keys().hasAll(['userId']) || request.resource.data.userId == resource.data.userId)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']);
+
+      match /books/{bookId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId);
+        allow create: if isOwner(userId) 
+                      && isValidId(bookId) 
+                      && request.resource.data.keys().hasAll(['title', 'name', 'chapters', 'currentCh', 'ownerId', 'updatedAt'])
+                      && isValidBook(request.resource.data);
+        allow update: if isOwner(userId) 
+                      && isValidBook(request.resource.data)
+                      && (!request.resource.data.keys().hasAll(['ownerId']) || request.resource.data.ownerId == resource.data.ownerId)
+                      && (
+                        // Action: Progress Update
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentCh', 'pagesRead', 'totalTime', 'updatedAt']) ||
+                        // Action: Metadata Edit (title/cover)
+                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'coverUrl', 'updatedAt'])
+                      );
+        allow delete: if isOwner(userId);
+
+        match /sessions/{sessionId} {
+          allow list, get: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidId(sessionId) && isValidSession(request.resource.data);
+          allow delete: if isOwner(userId);
+        }
+
+        match /bookmarks/{bookmarkId} {
+          allow list, get: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidId(bookmarkId) && isValidBookmark(request.resource.data);
+          allow delete: if isOwner(userId);
+        }
+
+        match /annotations/{annotationId} {
+          allow list, get: if isOwner(userId);
+          allow create: if isOwner(userId) && isValidId(annotationId) && isValidAnnotation(request.resource.data);
+          allow delete: if isOwner(userId);
+        }
+      }
+    }
+  }
+}

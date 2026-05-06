@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Basic user identity and configuration.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email", "createdAt"]
+    },
+    "Book": {
+      "title": "EPUB Book Metadata",
+      "description": "Metadata and current state for an uploaded EPUB book.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "name": { "type": "string" },
+        "chapters": { "type": "array", "items": { "type": "string" } },
+        "currentCh": { "type": "integer" },
+        "zipB64": { "type": "string", "description": "Base64 encoded EPUB binary. Warning: 1MB limit for Firestore docs." },
+        "pagesRead": { "type": "integer" },
+        "totalTime": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["title", "name", "chapters", "currentCh", "ownerId", "updatedAt"]
+    },
+    "Session": {
+      "title": "Reading Session",
+      "description": "A single reading session entry.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "duration": { "type": "integer" }
+      },
+      "required": ["date", "duration"]
+    },
+    "Bookmark": {
+      "title": "Bookmark",
+      "description": "A bookmarked chapter index.",
+      "type": "object",
+      "properties": {
+        "chapterIndex": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["chapterIndex", "createdAt"]
+    },
+    "Annotation": {
+      "title": "Annotation",
+      "description": "A note for a specific chapter.",
+      "type": "object",
+      "properties": {
+        "chapterIndex": { "type": "integer" },
+        "text": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" }
+      },
+      "required": ["chapterIndex", "text", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Isolated user profile data."
+    },
+    "/users/{userId}/books/{bookId}": {
+      "schema": "Book",
+      "description": "Collection of books associated with a user."
+    },
+    "/users/{userId}/books/{bookId}/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "Historical reading sessions for a book."
+    },
+    "/users/{userId}/books/{bookId}/bookmarks/{bookmarkId}": {
+      "schema": "Bookmark",
+      "description": "Indices of bookmarked chapters."
+    },
+    "/users/{userId}/books/{bookId}/annotations/{annotationId}": {
+      "schema": "Annotation",
+      "description": "User-generated notes for specific chapters."
+    }
+  }
+}
